@@ -97,7 +97,8 @@ document.addEventListener('DOMContentLoaded', function() {
         showTypingIndicator();
         
         // Send to backend
-        fetch('/api/chat', {
+       const API_BASE_URL = "https://ai-english-speaking-partner.onrender.com";
+        fetch('`${API_BASE_URL}/api/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -180,4 +181,5 @@ document.addEventListener('DOMContentLoaded', function() {
             addBotMessage(data.response);
             speak(data.response); // Speak the initial message
         });
+
 });
