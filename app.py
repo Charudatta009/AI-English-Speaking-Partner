@@ -1,12 +1,12 @@
 from flask import Flask, request, jsonify
-import language_tool_python
+from flask_cors import CORS
+from gingerit.gingerit import GingerIt
 import re
 import random
-from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
-tool = language_tool_python.LanguageTool('en-US')
+parser = GingerIt()
 
 # Sample conversation starters
 CONVERSATION_STARTERS = [
@@ -27,10 +27,14 @@ COMMON_MISTAKES = {
 }
 
 def check_grammar(text):
-    matches = tool.check(text)
-    if matches:
-        return matches[0].replacements[0] if matches[0].replacements else None
-    return None
+    try:
+        result = parser.parse(text)
+        if result['corrections']:
+            return result['corrections'][0]['text']
+        return None
+    except Exception as e:
+        print(f"Grammar check error: {e}")
+        return None
 
 def check_common_mistakes(text):
     for mistake, correction in COMMON_MISTAKES.items():
@@ -42,7 +46,7 @@ def generate_response(user_message):
     # Check for grammar and common mistakes
     correction = check_grammar(user_message) or check_common_mistakes(user_message)
     
-    # Simple response generation
+    # Simple response generation (in a real app, you'd use an LLM)
     responses = [
         "That's interesting! Tell me more about that.",
         "I see. How does that make you feel?",
