@@ -52,13 +52,13 @@ document.addEventListener('DOMContentLoaded', function() {
         recognition.interimResults = false;
         recognition.lang = 'en-US';
         
-        recognition.onresult = (event) => {
+        recognition.onresult = function(event) {
             const transcript = event.results[0][0].transcript;
             userInput.value = transcript;
             sendMessage();
         };
         
-        recognition.onerror = (event) => {
+        recognition.onerror = function(event) {
             console.error('Speech recognition error', event.error);
             micBtn.classList.remove('listening');
             addBotMessage("Sorry, I couldn't understand your speech. Please try again or type your message.");
@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     sendBtn.addEventListener('click', sendMessage);
-    userInput.addEventListener('keypress', (e) => {
+    userInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') sendMessage();
     });
     
@@ -96,20 +96,20 @@ document.addEventListener('DOMContentLoaded', function() {
         showTypingIndicator();
         
         // Send to Render backend
-        fetch(`${API_BASE_URL}/api/chat`, {
+        fetch(API_BASE_URL + '/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ message: message })
         })
-        .then(response => {
+        .then(function(response) {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
             return response.json();
         })
-        .then(data => {
+        .then(function(data) {
             hideTypingIndicator();
             addBotMessage(data.response);
             speak(data.response);
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 addCorrection(data.correction);
             }
         })
-        .catch(error => {
+        .catch(function(error) {
             hideTypingIndicator();
             const errorMsg = "Sorry, I'm having trouble connecting to the server. Please try again later.";
             addBotMessage(errorMsg);
@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function addCorrection(text) {
         const correctionDiv = document.createElement('div');
         correctionDiv.className = 'correction';
-        correctionDiv.textContent = `Correction: ${text}`;
+        correctionDiv.textContent = 'Correction: ' + text;
         chatMessages.appendChild(correctionDiv);
         scrollToBottom();
     }
@@ -155,11 +155,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const typingDiv = document.createElement('div');
         typingDiv.className = 'typing-indicator';
         typingDiv.id = 'typing-indicator';
-        typingDiv.innerHTML = `
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-        `;
+        typingDiv.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
         chatMessages.appendChild(typingDiv);
         scrollToBottom();
     }
@@ -176,18 +172,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Start conversation
-    fetch(`${API_BASE_URL}/api/start`)
-        .then(response => {
+    fetch(API_BASE_URL + '/api/start')
+        .then(function(response) {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
             return response.json();
         })
-        .then(data => {
+        .then(function(data) {
             addBotMessage(data.response);
             speak(data.response);
         })
-        .catch(error => {
+        .catch(function(error) {
             const errorMsg = "Welcome! Let's practice English. (Server connection issue)";
             addBotMessage(errorMsg);
             speak(errorMsg);
