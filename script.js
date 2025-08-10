@@ -4,19 +4,44 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendBtn = document.getElementById('send-btn');
     const micBtn = document.getElementById('mic-btn');
     
-    // Check browser support for speech synthesis
+    // Backend API base URL
+    const API_BASE_URL = 'https://ai-english-speaking-partner.onrender.com';
+    
+    // Speech synthesis setup
     const synth = window.speechSynthesis;
     let voices = [];
     let recognition;
     
     function populateVoices() {
         voices = synth.getVoices();
-        // You can filter voices here if needed
     }
     
     populateVoices();
     if (speechSynthesis.onvoiceschanged !== undefined) {
         speechSynthesis.onvoiceschanged = populateVoices;
+    }
+    
+    function speak(text) {
+        if (synth.speaking) {
+            synth.cancel();
+        }
+        
+        if (text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Try to find an English voice
+            const englishVoice = voices.find(voice => 
+                voice.lang.includes('en-') || voice.lang.includes('EN-')
+            );
+            
+            if (englishVoice) {
+                utterance.voice = englishVoice;
+            }
+            
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            synth.speak(utterance);
+        }
     }
     
     // Speech recognition setup
@@ -45,32 +70,6 @@ document.addEventListener('DOMContentLoaded', function() {
         micBtn.style.display = 'none';
     }
     
-    function speak(text) {
-        if (synth.speaking) {
-            synth.cancel();
-        }
-        
-        if (text) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            
-            // Set voice preferences
-            const preferredVoice = voices.find(voice => 
-                voice.name.includes('English') && 
-                voice.lang.includes('en-')
-            );
-            
-            if (preferredVoice) {
-                utterance.voice = preferredVoice;
-            }
-            
-            utterance.rate = 0.9; // Slightly slower than normal
-            utterance.pitch = 1; // Normal pitch
-            utterance.volume = 1; // Full volume
-            
-            synth.speak(utterance);
-        }
-    }
-    
     function toggleSpeechRecognition() {
         if (micBtn.classList.contains('listening')) {
             recognition.stop();
@@ -96,30 +95,32 @@ document.addEventListener('DOMContentLoaded', function() {
         userInput.value = '';
         showTypingIndicator();
         
-        // Send to backend
-       const API_BASE_URL = "https://ai-english-speaking-partner.onrender.com";
-        fetch('`${API_BASE_URL}/api/chat`, {
+        // Send to Render backend
+        fetch(`${API_BASE_URL}/api/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ message: message })
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(data => {
             hideTypingIndicator();
             addBotMessage(data.response);
-            speak(data.response); // Speak the response
+            speak(data.response);
             
             if (data.correction) {
                 addCorrection(data.correction);
-                // Optionally speak the correction too
-                // speak("Correction: " + data.correction);
             }
         })
         .catch(error => {
             hideTypingIndicator();
-            const errorMsg = "Sorry, I'm having trouble responding. Please try again.";
+            const errorMsg = "Sorry, I'm having trouble connecting to the server. Please try again later.";
             addBotMessage(errorMsg);
             speak(errorMsg);
             console.error('Error:', error);
@@ -174,12 +175,22 @@ document.addEventListener('DOMContentLoaded', function() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // Start conversation with a random question
-    fetch('/api/start')
-        .then(response => response.json())
+    // Start conversation
+    fetch(`${API_BASE_URL}/api/start`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(data => {
             addBotMessage(data.response);
-            speak(data.response); // Speak the initial message
+            speak(data.response);
+        })
+        .catch(error => {
+            const errorMsg = "Welcome! Let's practice English. (Server connection issue)";
+            addBotMessage(errorMsg);
+            speak(errorMsg);
+            console.error('Error:', error);
         });
-
 });
