@@ -1,0 +1,20 @@
+# Environment variables
+.env
+.env*
+!.env.example  # Keep example files (optional)
+
+# Session files (if using filesystem sessions)
+flask_session/
+
+# Python cache and virtual environment
+__pycache__/
+*.pyc
+venv/
+env/
+.venv/
+
+# Development files
+.idea/
+.vscode/
+*.swp
+*.swo
