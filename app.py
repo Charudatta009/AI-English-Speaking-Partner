@@ -125,7 +125,7 @@ CORS(app)
 
 # Configuration
 HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
-HF_TOKEN = "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"
+HF_TOKEN = "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"
 
 # Validate token on startup
 if not HF_TOKEN:
@@ -243,6 +243,7 @@ def start_conversation():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
