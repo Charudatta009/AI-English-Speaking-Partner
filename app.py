@@ -111,14 +111,15 @@
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from textblob import TextBlob
-import random
 import requests
 import os
 from dotenv import load_dotenv
+import re
+import random
+from datetime import datetime
 
+# Initialize
 load_dotenv()
-
 app = Flask(__name__)
 CORS(app)
 
@@ -130,83 +131,91 @@ HF_TOKEN = os.getenv('HF_API_TOKEN')
 conversation_history = []
 
 def query_llm(prompt):
-    """Get LLM suggestions for more natural responses"""
+    """Get response from LLM with robust error handling"""
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {
         "inputs": prompt,
         "parameters": {
-            "max_new_tokens": 80,
+            "max_new_tokens": 100,
             "temperature": 0.7,
             "return_full_text": False
         }
     }
+    
     try:
-        response = requests.post(HF_API_URL, headers=headers, json=payload)
+        response = requests.post(
+            HF_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=10  # Important for Render's timeout limits
+        )
+        response.raise_for_status()
         return response.json()[0]['generated_text'].strip('"\'')
-    except:
+    except Exception as e:
+        print(f"LLM API Error: {str(e)}")
         return None
 
 def generate_response(user_message):
-    """Generate human-like response with LLM assistance"""
-    # Analyze user input
-    analysis = TextBlob(user_message)
-    nouns = [word for (word, tag) in analysis.tags if tag.startswith('N')]
-    verbs = [word for (word, tag) in analysis.tags if tag.startswith('V')]
+    """Generate context-aware response using LLM with fallback"""
+    # Build conversation context
+    context = "\n".join(
+        f"You: {msg}\nAI: {resp}" 
+        for msg, resp in conversation_history[-3:]  # Last 3 exchanges
+    )
     
-    # Store conversation context
-    context = {
-        'last_user_message': user_message,
-        'topics': nouns[:3],
-        'actions': verbs[:2],
-        'history': conversation_history[-3:] if len(conversation_history) > 3 else conversation_history
-    }
-    
-    # Create LLM prompt for natural response
-    llm_prompt = f"""You're an English conversation partner. The student said:
-"{user_message}"
+    # Create LLM prompt
+    prompt = f"""As an English tutor, respond naturally to the student. Follow these rules:
+1. Keep responses under 2 sentences
+2. Gently correct major grammar mistakes
+3. Show genuine interest
+4. Ask relevant follow-up questions
 
-Respond naturally while:
-1. Continuing the conversation flow
-2. Showing genuine interest
-3. Keeping response under 2 sentences
-4. Using {context['topics']} if relevant
-
-Response:"""
+{context}
+Student: {user_message}
+AI:"""
     
-    # Get LLM suggestion (fallback to rules if API fails)
-    llm_response = query_llm(llm_prompt)
-    
+    # Try LLM first
+    llm_response = query_llm(prompt)
     if llm_response:
         return llm_response
     
-    # Fallback rules
-    responses = [
-        f"That's interesting! What do you like about {random.choice(nouns) if nouns else 'that'}?",
-        "I see. Could you tell me more about that?",
-        "What was that experience like for you?",
+    # Fallback rules if LLM fails
+    fallback_responses = [
+        "Interesting! Tell me more about that.",
         "How did that make you feel?",
-        "That's fascinating! What else have you been up to?"
+        "What was that experience like?",
+        "Could you elaborate on that?"
     ]
-    return random.choice(responses)
+    return random.choice(fallback_responses)
+
+def get_gentle_correction(text):
+    """Provide grammar corrections without NLTK"""
+    corrections = {
+        r'\bi (is|am)\b': 'I am',
+        r'\b(he|she) (are)\b': r'\1 is',
+        r'\b(we|they) (is)\b': r'\1 are',
+        r'\byesterday i (go|eat|see)\b': r'yesterday I \1ed',
+        r'\bdon\'t has\b': "don't have"
+    }
+    
+    if random.random() > 0.7:  # 30% chance to correct
+        for pattern, fix in corrections.items():
+            if re.search(pattern, text, re.IGNORECASE):
+                corrected = re.sub(pattern, fix, text, flags=re.IGNORECASE)
+                return f"Just to note: we usually say '{corrected}'"
+    return None
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
     user_message = request.json.get('message', '').strip()
     
     if not user_message:
-        return jsonify({'response': "I didn't catch that. Could you repeat?"})
+        return jsonify({'response': "Could you please repeat that?"})
     
-    # Generate response
     response = generate_response(user_message)
+    conversation_history.append((user_message, response))
     
-    # Store conversation
-    conversation_history.append({
-        'user': user_message,
-        'bot': response,
-        'time': datetime.now().isoformat()
-    })
-    
-    # Keep last 5 exchanges
+    # Keep conversation history manageable
     if len(conversation_history) > 5:
         conversation_history.pop(0)
     
@@ -215,36 +224,17 @@ def chat():
         'correction': get_gentle_correction(user_message)
     })
 
-def get_gentle_correction(text):
-    """Provide occasional corrections"""
-    common_mistakes = {
-        r'\bi (is|am)\b': 'I am',
-        r'\b(he|she) (are)\b': r'\1 is',
-        r'\b(we|they) (is)\b': r'\1 are',
-        r'\byesterday i (go|eat|see)\b': r'yesterday I \1ed'
-    }
-    
-    if random.random() > 0.7:  # 30% chance to correct
-        for pattern, fix in common_mistakes.items():
-            if re.search(pattern, text, re.IGNORECASE):
-                corrected = re.sub(pattern, fix, text, flags=re.IGNORECASE)
-                return f"Just to note: we usually say '{corrected}'"
-    return None
-
 @app.route('/api/start', methods=['GET'])
 def start_conversation():
     conversation_history.clear()
     starters = [
-        "Hey there! What's on your mind today?",
-        "Hi! What would you like to chat about?",
-        "Hello! What's something interesting that happened recently?"
+        "Hi! I'm your English practice partner. What would you like to talk about?",
+        "Hello! What's something interesting you'd like to discuss?",
+        "Hey there! What would you like to practice today?"
     ]
     return jsonify({'response': random.choice(starters)})
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-# if __name__ == '__main__':
-#     app.run(debug=True)
 
 
