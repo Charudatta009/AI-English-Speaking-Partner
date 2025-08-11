@@ -1,6 +1,6 @@
 # Environment variables
 .env
-.env*
+*.env
 !.env.example  # Keep example files (optional)
 
 # Session files (if using filesystem sessions)
