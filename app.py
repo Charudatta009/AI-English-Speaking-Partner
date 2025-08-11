@@ -116,23 +116,32 @@ import os
 from dotenv import load_dotenv
 import re
 import random
-from datetime import datetime
 
-# Initialize
+# Initialize environment
 load_dotenv()
+
 app = Flask(__name__)
 CORS(app)
 
-# Hugging Face Inference API (Free tier)
+# Configuration
 HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
-HF_TOKEN = os.getenv('HF_API_TOKEN')
+HF_TOKEN = os.getenv('HF_API_TOKEN') or os.environ.get('HF_API_TOKEN')  # Checks both .env and system vars
 
-# Conversation memory
+# Validate token on startup
+if not HF_TOKEN:
+    print("Warning: HF_API_TOKEN not found. Using fallback responses.")
+
 conversation_history = []
 
 def query_llm(prompt):
-    """Get response from LLM with robust error handling"""
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    """Safely query LLM with enhanced error handling"""
+    if not HF_TOKEN:
+        return None
+        
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Content-Type": "application/json"
+    }
     payload = {
         "inputs": prompt,
         "parameters": {
@@ -147,62 +156,63 @@ def query_llm(prompt):
             HF_API_URL,
             headers=headers,
             json=payload,
-            timeout=10  # Important for Render's timeout limits
+            timeout=15  # Increased timeout for Render
         )
+        
+        # Check for API errors
+        if response.status_code == 401:
+            print("Invalid Hugging Face token. Check your HF_API_TOKEN.")
+            return None
+        elif response.status_code == 503:
+            print("Model loading... please try again later")
+            return None
+            
         response.raise_for_status()
         return response.json()[0]['generated_text'].strip('"\'')
     except Exception as e:
-        print(f"LLM API Error: {str(e)}")
+        print(f"LLM Error: {str(e)}")
         return None
 
 def generate_response(user_message):
-    """Generate context-aware response using LLM with fallback"""
-    # Build conversation context
-    context = "\n".join(
-        f"You: {msg}\nAI: {resp}" 
-        for msg, resp in conversation_history[-3:]  # Last 3 exchanges
-    )
-    
-    # Create LLM prompt
-    prompt = f"""As an English tutor, respond naturally to the student. Follow these rules:
-1. Keep responses under 2 sentences
-2. Gently correct major grammar mistakes
-3. Show genuine interest
-4. Ask relevant follow-up questions
-
-{context}
+    """Generate response with LLM fallback logic"""
+    # Try LLM first if token exists
+    if HF_TOKEN:
+        prompt = f"""As an English tutor, respond to this naturally:
 Student: {user_message}
-AI:"""
+Rules:
+1. Respond in 1-2 sentences
+2. Gently correct major errors
+3. Ask relevant follow-ups
+4. Keep it conversational
+
+Response:"""
+        
+        llm_response = query_llm(prompt)
+        if llm_response:
+            return llm_response
     
-    # Try LLM first
-    llm_response = query_llm(prompt)
-    if llm_response:
-        return llm_response
-    
-    # Fallback rules if LLM fails
-    fallback_responses = [
+    # Fallback responses if LLM fails
+    fallbacks = [
         "Interesting! Tell me more about that.",
         "How did that make you feel?",
-        "What was that experience like?",
-        "Could you elaborate on that?"
+        "Could you explain that in more detail?",
+        "What was that experience like for you?"
     ]
-    return random.choice(fallback_responses)
+    return random.choice(fallbacks)
 
 def get_gentle_correction(text):
-    """Provide grammar corrections without NLTK"""
     corrections = {
         r'\bi (is|am)\b': 'I am',
         r'\b(he|she) (are)\b': r'\1 is',
         r'\b(we|they) (is)\b': r'\1 are',
-        r'\byesterday i (go|eat|see)\b': r'yesterday I \1ed',
-        r'\bdon\'t has\b': "don't have"
+        r'\byesterday i (go|eat|see)\b': r'yesterday I \1ed'
     }
     
     if random.random() > 0.7:  # 30% chance to correct
         for pattern, fix in corrections.items():
             if re.search(pattern, text, re.IGNORECASE):
                 corrected = re.sub(pattern, fix, text, flags=re.IGNORECASE)
-                return f"Just to note: we usually say '{corrected}'"
+                return f"Note: We usually say '{corrected}'"
     return None
 
 @app.route('/api/chat', methods=['POST'])
@@ -210,14 +220,10 @@ def chat():
     user_message = request.json.get('message', '').strip()
     
     if not user_message:
-        return jsonify({'response': "Could you please repeat that?"})
+        return jsonify({'response': "Could you repeat that?"})
     
     response = generate_response(user_message)
-    conversation_history.append((user_message, response))
-    
-    # Keep conversation history manageable
-    if len(conversation_history) > 5:
-        conversation_history.pop(0)
+    conversation_history.append(user_message[:100])  # Store truncated message
     
     return jsonify({
         'response': response,
@@ -228,13 +234,15 @@ def chat():
 def start_conversation():
     conversation_history.clear()
     starters = [
-        "Hi! I'm your English practice partner. What would you like to talk about?",
-        "Hello! What's something interesting you'd like to discuss?",
-        "Hey there! What would you like to practice today?"
+        "Hi! What would you like to practice today?",
+        "Hello! Tell me something interesting.",
+        "Let's practice English! What's on your mind?"
     ]
     return jsonify({'response': random.choice(starters)})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
 
 
